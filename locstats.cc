@@ -289,7 +289,8 @@ die_ranges (Dwarf_Die *die)
   Dwarf_Addr base;
   Dwarf_Addr start, end;
   ranges_t ret;
-  for (ptrdiff_t it = 0; dwarf_ranges (die, it, &base, &start, &end) != 0; )
+  for (ptrdiff_t it = 0; (it = dwarf_ranges (die, it,
+					     &base, &start, &end)) != 0; )
     ret.push_back (std::make_pair (start, end));
   return ret;
 }
