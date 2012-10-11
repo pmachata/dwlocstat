@@ -301,8 +301,11 @@ ranges_t
 find_ranges (all_dies_iterator it)
 {
   for (; it != all_dies_iterator::end (); it = it.parent ())
-    if (!die_ranges (*it).empty ())
-      return die_ranges (*it);
+    {
+      auto ranges = die_ranges (*it);
+      if (!ranges.empty ())
+	return ranges;
+    }
   throw error ("no ranges for this DIE");
 }
 
