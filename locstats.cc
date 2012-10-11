@@ -428,6 +428,9 @@ process (Dwarf *dw)
       if (die_flag_value (die, DW_AT_external) && locattr == NULL)
 	continue;
 
+      if (locattr == NULL)
+	locattr = dwarf_attr (die, DW_AT_const_value, &locattr_mem);
+
       /*
       Dwarf_Attribute name_attr_mem,
 	*name_attr = dwarf_attr_integrate (die, DW_AT_name, &name_attr_mem);
@@ -445,20 +448,20 @@ process (Dwarf *dw)
       size_t len;
       mutability_t mut;
 
-      // consts need no location
-      if (dwarf_hasattr (die, DW_AT_const_value))
-	{
-	  coverage = 100;
-	  if (interested_mutability)
-	    mut.set (false);
-	}
-
       // no location
-      else if (locattr == NULL)
+      if (locattr == NULL)
 	{
 	  coverage = cov_00;
 	  if (interested_mutability)
 	    mut.set_both ();
+	}
+
+      // consts need no location
+      else if (dwarf_whatattr (locattr) == DW_AT_const_value)
+	{
+	  coverage = 100;
+	  if (interested_mutability)
+	    mut.set (false);
 	}
 
       // non-list location
