@@ -289,14 +289,14 @@ die_ranges (Dwarf_Die *die)
   Dwarf_Addr base;
   Dwarf_Addr start, end;
   ranges_t ret;
-  for (ptrdiff_t it = 0; (it = dwarf_ranges (die, it,
-					     &base, &start, &end)) != 0; )
+  for (ptrdiff_t it = 0;
+       (it = dwarf_ranges (die, it, &base, &start, &end)) != 0; )
     ret.push_back (std::make_pair (start, end));
   return ret;
 }
 
-// Look through the stack of parental dies and return the non-empty
-// ranges instance closest to the stack top (i.e. die_stack.end ()).
+// Look through parental dies and return the non-empty ranges instance
+// closest to IT hierarchically.
 ranges_t
 find_ranges (all_dies_iterator it)
 {
@@ -530,6 +530,8 @@ process (Dwarf *dw)
 	    {
 	      std::cerr << "error: " << die_locus (die) << ": "
 			<< e.what () << '.' << std::endl;
+
+	      // Skip this DIE altogether.
 	      continue;
 	    }
 	}
