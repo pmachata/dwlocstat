@@ -507,16 +507,17 @@ process (Dwarf *dw)
 		      // At least one expression for the address must
 		      // be of non-zero length for us to count that
 		      // address as covered.
+		      bool cover = false;
 		      for (int i = 0; i < got; ++i)
 			{
 			  if (interested_mutability)
 			    mut.locexpr (exprs[i], exprlens[i]);
 			  if (exprlens[i] > 0)
-			    {
-			      covered++;
-			      break;
-			    }
+			    cover = true;
 			}
+
+		      if (cover)
+			covered++;
 		    }
 		}
 
