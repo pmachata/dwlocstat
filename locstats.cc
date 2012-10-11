@@ -309,6 +309,109 @@ find_ranges (all_dies_iterator it)
   throw error ("no ranges for this DIE");
 }
 
+static bool
+process_location (all_dies_iterator it,
+		  Dwarf_Attribute *locattr,
+		  bool interested_mutability,
+		  std::bitset<dt__count> &die_type,
+		  mutability_t &mut,
+		  int &coverage)
+{
+  Dwarf_Op *expr;
+  size_t len;
+
+  // no location
+  if (locattr == NULL)
+    {
+      coverage = cov_00;
+      if (interested_mutability)
+	mut.set_both ();
+    }
+
+  // consts need no location
+  else if (dwarf_whatattr (locattr) == DW_AT_const_value)
+    {
+      coverage = 100;
+      if (interested_mutability)
+	mut.set (false);
+    }
+
+  // non-list location
+  else if (dwarf_getlocation (locattr, &expr, &len) == 0)
+    {
+      // Globals and statics have non-list location that is a
+      // singleton DW_OP_addr expression.
+      if (len == 1 && expr[0].atom == DW_OP_addr)
+	die_type.set (dt_single_addr);
+      if (interested_mutability)
+	mut.locexpr (expr, len);
+      coverage = (len == 0) ? cov_00 : 100;
+    }
+
+  // location list
+  else
+    {
+      try
+	{
+	  ranges_t ranges = find_ranges (it);
+	  size_t length = 0;
+	  size_t covered = 0;
+
+	  // Arbitrarily assume that there will be no more than 10
+	  // expressions per address.
+	  size_t nlocs = 10;
+	  Dwarf_Op *exprs[nlocs];
+	  size_t exprlens[nlocs];
+
+	  for (auto rit = ranges.begin (); rit != ranges.end (); ++rit)
+	    {
+	      Dwarf_Addr low = rit->first;
+	      Dwarf_Addr high = rit->second;
+	      length += high - low;
+	      //std::cerr << " " << low << ".." << high << std::endl;
+
+	      for (Dwarf_Addr addr = low; addr < high; ++addr)
+		{
+		  int got = dwarf_getlocation_addr (locattr, addr,
+						    exprs, exprlens, nlocs);
+		  if (got < 0)
+		    throw ::error (std::string ("dwarf_getlocation_addr: ")
+				   + dwarf_errmsg (-1));
+
+		  // At least one expression for the address must
+		  // be of non-zero length for us to count that
+		  // address as covered.
+		  bool cover = false;
+		  for (int i = 0; i < got; ++i)
+		    {
+		      if (interested_mutability)
+			mut.locexpr (exprs[i], exprlens[i]);
+		      if (exprlens[i] > 0)
+			cover = true;
+		    }
+
+		  if (cover)
+		    covered++;
+		}
+	    }
+
+	  if (length == 0 || covered == 0)
+	    coverage = cov_00;
+	  else
+	    coverage = 100 * covered / length;
+	}
+      catch (::error const &e)
+	{
+	  std::cerr << "error: " << die_locus (*it) << ": "
+		    << e.what () << '.' << std::endl;
+
+	  // Skip this DIE altogether.
+	  return true;
+	}
+    }
+  return false;
+}
+
 bool
 die_flag_value (Dwarf_Die *die, unsigned attr_name)
 {
@@ -444,99 +547,10 @@ process (Dwarf *dw)
       */
 
       int coverage;
-      Dwarf_Op *expr;
-      size_t len;
       mutability_t mut;
-
-      // no location
-      if (locattr == NULL)
-	{
-	  coverage = cov_00;
-	  if (interested_mutability)
-	    mut.set_both ();
-	}
-
-      // consts need no location
-      else if (dwarf_whatattr (locattr) == DW_AT_const_value)
-	{
-	  coverage = 100;
-	  if (interested_mutability)
-	    mut.set (false);
-	}
-
-      // non-list location
-      else if (dwarf_getlocation (locattr, &expr, &len) == 0)
-	{
-	  // Globals and statics have non-list location that is a
-	  // singleton DW_OP_addr expression.
-	  if (len == 1 && expr[0].atom == DW_OP_addr)
-	    die_type.set (dt_single_addr);
-	  if (interested_mutability)
-	    mut.locexpr (expr, len);
-	  coverage = (len == 0) ? cov_00 : 100;
-	}
-
-      // location list
-      else
-	{
-	  try
-	    {
-	      ranges_t ranges = find_ranges (it);
-	      size_t length = 0;
-	      size_t covered = 0;
-
-	      // Arbitrarily assume that there will be no more than 10
-	      // expressions per address.
-	      size_t nlocs = 10;
-	      Dwarf_Op *exprs[nlocs];
-	      size_t exprlens[nlocs];
-
-	      for (auto rit = ranges.begin (); rit != ranges.end (); ++rit)
-		{
-		  Dwarf_Addr low = rit->first;
-		  Dwarf_Addr high = rit->second;
-		  length += high - low;
-		  //std::cerr << " " << low << ".." << high << std::endl;
-
-		  for (Dwarf_Addr addr = low; addr < high; ++addr)
-		    {
-		      int got = dwarf_getlocation_addr (locattr, addr,
-							exprs, exprlens, nlocs);
-		      if (got < 0)
-			throw ::error (std::string ("dwarf_getlocation_addr: ")
-				       + dwarf_errmsg (-1));
-
-		      // At least one expression for the address must
-		      // be of non-zero length for us to count that
-		      // address as covered.
-		      bool cover = false;
-		      for (int i = 0; i < got; ++i)
-			{
-			  if (interested_mutability)
-			    mut.locexpr (exprs[i], exprlens[i]);
-			  if (exprlens[i] > 0)
-			    cover = true;
-			}
-
-		      if (cover)
-			covered++;
-		    }
-		}
-
-	      if (length == 0 || covered == 0)
-		coverage = cov_00;
-	      else
-		coverage = 100 * covered / length;
-	    }
-	  catch (::error const &e)
-	    {
-	      std::cerr << "error: " << die_locus (die) << ": "
-			<< e.what () << '.' << std::endl;
-
-	      // Skip this DIE altogether.
-	      continue;
-	    }
-	}
+      if (process_location (it, locattr, interested_mutability,
+			    die_type, mut, coverage))
+	continue;
 
       if ((ignore & die_type).any ())
 	continue;
