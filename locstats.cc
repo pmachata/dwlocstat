@@ -520,10 +520,7 @@ process (Dwarf *dw)
 		    }
 		}
 
-	      if (length == 0)
-		throw ::error ("zero-length range");
-
-	      if (covered == 0)
+	      if (length == 0 || covered == 0)
 		coverage = cov_00;
 	      else
 		coverage = 100 * covered / length;
