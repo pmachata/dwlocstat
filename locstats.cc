@@ -251,19 +251,19 @@ public:
   {
     // We scan the expression looking for DW_OP_{bit_,}piece
     // operators which mark ends of sub-expressions to us.
-    bool m = false;
+    bool m = true;
     for (size_t i = 0; i < len; ++i)
       switch (expr[i].atom)
 	{
 	case DW_OP_implicit_value:
 	case DW_OP_stack_value:
-	  m = true;
+	  m = false;
 	  break;
 
 	case DW_OP_bit_piece:
 	case DW_OP_piece:
 	  set (m);
-	  m = false;
+	  m = true;
 	  break;
 	};
     set (m);
@@ -450,7 +450,7 @@ process (Dwarf *dw)
 	{
 	  coverage = 100;
 	  if (interested_mutability)
-	    mut.set (true);
+	    mut.set (false);
 	}
 
       // no location
