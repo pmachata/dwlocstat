@@ -573,14 +573,8 @@ process (Dwarf *dw)
 	    {
 	      std::cerr << pad << pri::ref (&die2) << " "
 			<< dwarf_tag_string (dwarf_tag (&die2)) << std::endl;
-	      for (attr_iterator at (&die2); at != attr_iterator::end (); ++at)
-		std::cerr << pad << "    "
-			  << dwarf_attr_string (dwarf_whatattr (*at))
-			  << std::endl;
 	      pad += " ";
 	    }
-
-	  std::cerr << "empty coverage " << pri::ref (die) << std::endl;
 	}
 
       tally[coverage]++;
