@@ -470,11 +470,7 @@ process (Dwarf *dw)
 	  // Globals and statics have non-list location that is a
 	  // singleton DW_OP_addr expression.
 	  if (len == 1 && expr[0].atom == DW_OP_addr)
-	    {
-	      if (ignore.test (dt_single_addr))
-		continue;
-	      die_type.set (dt_single_addr);
-	    }
+	    die_type.set (dt_single_addr);
 	  if (interested_mutability)
 	    mut.locexpr (expr, len);
 	  coverage = (len == 0) ? cov_00 : 100;
@@ -541,6 +537,9 @@ process (Dwarf *dw)
 	      continue;
 	    }
 	}
+
+      if ((ignore & die_type).any ())
+	continue;
 
       if (coverage == cov_00)
 	{
