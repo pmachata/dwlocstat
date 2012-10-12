@@ -58,6 +58,9 @@ or special value 0.0 indicating cases with no coverage whatsoever \
 (i.e. not those that happen to round to 0%).",
    "start[:step][,...]", "tabulate");
 
+global_opt<void_option> opt_show_progess
+  ("Show progress.", "show-progress", 'p');
+
 // where.c needs to know how to format certain wheres.  The module
 // doesn't know that we don't use these :)
 extern "C"
@@ -557,11 +560,29 @@ process (Dwarf *dw)
   std::bitset<dt__count> interested = ignore | dump;
   bool interested_mutability
     = interested.test (dt_mutable) || interested.test (dt_immutable);
+  bool show_progress = opt_show_progess.seen ();
+
+  cu_iterator prev_cit = cu_iterator::end ();
+  cu_iterator last_cit = cu_iterator::end ();
+  if (show_progress)
+    for (cu_iterator it = cu_iterator (dw); it != cu_iterator::end (); ++it)
+      last_cit = it;
 
   for (all_dies_iterator it (dw); it != all_dies_iterator::end (); ++it)
     {
       std::bitset<dt__count> die_type;
       Dwarf_Die *die = *it;
+
+      if (show_progress)
+	{
+	  cu_iterator cit = it.cu ();
+	  if (cit != prev_cit)
+	    {
+	      prev_cit = cit;
+	      std::cout << pri::ref (*cit) << '/' << pri::ref (*last_cit)
+			<< '\r' << std::flush;
+	    }
+	}
 
       // We are interested in variables and formal parameters
       bool is_formal_parameter = dwarf_tag (die) == DW_TAG_formal_parameter;
@@ -712,6 +733,9 @@ process (Dwarf *dw)
       total++;
       //std::cerr << std::endl;
     }
+
+  if (show_progress)
+    std::cout << std::endl;
 
   unsigned long cumulative = 0;
   unsigned long last = 0;
