@@ -35,7 +35,7 @@ main(int argc, char *argv[])
 		dwarf_dieoffset (*it));
       auto stk = it.stack ();
       for (auto &die: stk)
-	printf (" %#lx", dwarf_dieoffset (&die));
+	printf (" %#" PRIx64, dwarf_dieoffset (&die));
       printf ("\n  ");
       for (attr_iterator at (*it); at != attr_iterator::end (); ++at)
 	printf (" %s", dwarf_attr_string (dwarf_whatattr (*at)));

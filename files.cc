@@ -22,6 +22,7 @@
 #include <cstring>
 #include <cerrno>
 #include <stdexcept>
+#include <unistd.h>
 
 #include "eu-config.h"
 #include "files.hh"
