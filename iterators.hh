@@ -48,6 +48,7 @@ class cu_iterator
   cu_iterator (Dwarf_Off off)
     : m_dw (nullptr)
     , m_offset (off)
+    , m_cudie ({})
   {}
 
   void
@@ -82,6 +83,7 @@ public:
   explicit cu_iterator (Dwarf *dw)
     : m_dw (dw)
     , m_offset (0)
+    , m_cudie ({})
   {
     move ();
   }
