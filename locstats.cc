@@ -346,18 +346,16 @@ die_ranges (Dwarf_Die *die)
 // Look through parental dies and return the non-empty ranges instance
 // closest to IT hierarchically.
 ranges_t
-find_ranges (all_dies_iterator jt)
+find_ranges (all_dies_iterator it)
 {
-  for (auto it = jt; it != all_dies_iterator::end (); it = it.parent ())
+  for (; it != all_dies_iterator::end (); it = it.parent ())
     {
       auto ranges = die_ranges (*it);
       if (!ranges.empty ())
 	return ranges;
     }
 
-  std::stringstream ss;
-  ss << "no ranges for " << pri::ref (*jt);
-  throw error (ss.str ());
+  throw error ("no ranges at this or parental DIEs.");
 }
 
 static die_action
@@ -654,9 +652,20 @@ process (Dwarf *dw)
 
       int coverage;
       mutability_t mut;
-      if (process_location (locattr, find_ranges (it), interested_mutability,
-			    die_type, mut, coverage) != da_ok)
-	continue;
+      try
+	{
+	  if (process_location (locattr, find_ranges (it),
+				interested_mutability,
+				die_type, mut, coverage) != da_ok)
+	    continue;
+	}
+      catch (::error &e)
+	{
+	  std::cerr << "error: " << pri::ref (*it)
+		    << ": " << e.what () << std::endl;
+	  // Skip the erroneous DIE.
+	  continue;
+	}
 
       if ((ignore & die_type).any ())
 	continue;
@@ -770,22 +779,13 @@ main(int argc, char *argv[])
   bool only_one = remaining + 1 == argc;
   do
     {
-      try
-	{
-	  char const *fname = argv[remaining];
-	  if (!only_one)
-	    std::cout << std::endl << fname << ":" << std::endl;
+      char const *fname = argv[remaining];
+      if (!only_one)
+	std::cout << std::endl << fname << ":" << std::endl;
 
-	  dwfl dwfl;
-	  Dwarf *dw = dwfl.open_dwarf (fname);
-	  process (dw);
-	}
-      catch (std::runtime_error &e)
-	{
-	  std::cerr << "error: "
-		    << e.what () << '.' << std::endl;
-	  continue;
-	}
+      dwfl dwfl;
+      Dwarf *dw = dwfl.open_dwarf (fname);
+      process (dw);
     }
   while (++remaining < argc);
 }
