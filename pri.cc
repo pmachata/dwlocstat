@@ -34,12 +34,6 @@
 #include "pri.hh"
 
 std::ostream &
-pri::operator << (std::ostream &os, pri::pribase const &obj)
-{
-  return os << obj.m_s;
-}
-
-std::ostream &
 pri::operator << (std::ostream &os, pri::ref const &obj)
 {
   std::stringstream ss;

@@ -32,43 +32,8 @@
 #include <elfutils/libdw.h>
 #include <string>
 
-#define PRI_NOT_ENOUGH ": not enough data for %s.\n"
-
 namespace pri
 {
-  class pribase
-  {
-    std::string m_s;
-
-  protected:
-    pribase (std::string const &a,
-	     std::string const &b = "",
-	     std::string const &c = "")
-      : m_s (a + b + c)
-    {}
-    friend std::ostream &operator << (std::ostream &os, pribase const &obj);
-
-  public:
-    operator std::string const &() const { return m_s; }
-  };
-  std::ostream &operator << (std::ostream &os, pribase const &obj);
-
-  struct not_enough
-    : public pribase
-  {
-    not_enough (std::string const &what)
-      : pribase ("not enough data for ", what)
-    {}
-  };
-
-  struct lacks_relocation
-    : public pribase
-  {
-    lacks_relocation (std::string const &what)
-      : pribase (what, " seems to lack a relocation")
-    {}
-  };
-
   class ref
   {
     Dwarf_Off off;

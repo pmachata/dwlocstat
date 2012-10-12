@@ -26,10 +26,6 @@
    the GNU Lesser General Public License along with this program.  If
    not, see <http://www.gnu.org/licenses/>.  */
 
-#ifdef HAVE_CONFIG_H
-# include <config.h>
-#endif
-
 #include <sstream>
 #include <bitset>
 #include <cstring>
@@ -357,7 +353,6 @@ find_ranges (all_dies_iterator jt)
       auto ranges = die_ranges (*it);
       if (!ranges.empty ())
 	return ranges;
-      std::cerr << " considered " << pri::ref (*it) << std::endl;
     }
 
   std::stringstream ss;
@@ -656,7 +651,6 @@ process (Dwarf *dw)
       std::cerr << "die=" << std::hex << die.offset ()
 		<< " '" << name << '\'';
       */
-      std::cerr << pri::ref (die) << std::endl;
 
       int coverage;
       mutability_t mut;
