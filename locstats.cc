@@ -249,8 +249,10 @@ public:
 
   void locexpr (Dwarf_Op *expr, size_t len)
   {
-    // We scan the expression looking for DW_OP_{bit_,}piece
-    // operators which mark ends of sub-expressions to us.
+    // We scan the expression looking for DW_OP_{bit_,}piece operators
+    // which mark ends of sub-expressions to us.  Some operators
+    // describe the object value instead its location: these are
+    // immutable.
     bool m = true;
     for (size_t i = 0; i < len; ++i)
       switch (expr[i].atom)
@@ -264,6 +266,14 @@ public:
 	case DW_OP_piece:
 	  set (m);
 	  m = true;
+	  break;
+
+	case DW_OP_GNU_entry_value:
+	  // This evaluates its argument as location expression, with
+	  // registers having values as they had on entry to current
+	  // function.  It says nothing about how the value is used,
+	  // so it's just a complex way of computing some constant.
+	  // Thus it can be either mutable or immutable.
 	  break;
 	};
     set (m);
