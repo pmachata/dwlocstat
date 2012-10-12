@@ -364,7 +364,7 @@ find_ranges (all_dies_iterator it)
 	return ranges;
     }
 
-  throw error ("no ranges at this or parental DIEs.");
+  throw error ("no ranges at this or parental DIEs");
 }
 
 static die_action
@@ -467,14 +467,8 @@ process_location (Dwarf_Attribute *locattr,
 	      int got = dwarf_getlocation_addr (locattr, addr,
 						exprs, exprlens, nlocs);
 	      if (got < 0)
-		{
-		  // XXX locus
-		  std::cerr << "error: dwarf_getlocation_addr: "
-			    << dwarf_errmsg (-1) << '.' << std::endl;
-
-		  // Skip this DIE altogether.
-		  return da_skip;
-		}
+		throw ::error ((std::string)"dwarf_getlocation_addr: "
+			       + dwarf_errmsg (-1));
 
 	      // At least one expression for the address must
 	      // be of non-zero length for us to count that
@@ -709,7 +703,7 @@ process (Dwarf *dw)
       catch (::error &e)
 	{
 	  std::cerr << "error: " << pri::ref (*it)
-		    << ": " << e.what () << std::endl;
+		    << ": " << e.what () << ". (skipping)" << std::endl;
 	  // Skip the erroneous DIE.
 	  continue;
 	}
