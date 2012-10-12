@@ -1,0 +1,47 @@
+dwlocstat
+=========
+
+This is a tool for examining Dwarf location info coverage.  It goes
+through DIEs of given binary's debug info that represent variables and
+function parameters.  For each such DIE, it computes coverage of that
+DIE's range (list of addresses of DIE's scope) by location expressions
+(a description of where given variable is located at given location:
+e.g. a variable can be in a register).
+
+Coverage is expressed by percentage of covered addresses of DIE's
+scope.  If each address of DIE's scope is covered by at least one
+location expression, the coverage is 100%.  If none are covered at
+all, the coverage is 0.0% (sharp zero).  The program assigns coverage
+to each relevant DIE, and then tabulates the data.  Output might look
+something like this:
+
+    coverage%       samples         cumulative
+    0..10           1049/29%        1049/29%
+    11..20          67/1%           1116/31%
+    21..30          95/2%           1211/34%
+    31..40          84/2%           1295/36%
+    41..50          69/1%           1364/38%
+    51..60          100/2%          1464/41%
+    61..70          58/1%           1522/42%
+    71..80          85/2%           1607/45%
+    81..90          102/2%          1709/48%
+    91..100         1851/51%        3560/100%
+
+This says that there were 1049 variable or parameter DIEs whose
+coverage was less than or equal to 10%.  Those 1049 DIEs comprise 29%
+of total number of processed DIEs, which is 3560.  The way theh
+tabulation is done is configurable.
+
+In addition to this, dwlocstat allows dumping DIEs matching certain
+criteria, such as all inlined DIEs.  It can similarly exclude such
+DIEs from consideration.
+
+DW_OP_GNU_implicit_pointer
+--------------------------
+
+This opcode is handled differently from the others.  When an
+expression is encountered that uses this operator, and no other
+expression covers the address under consideration, such address is not
+counted as covered.  Instead the program checks whether the location
+expression at the DIE referenced by this operator covers this address.
+This behavior can be turned off by an option.
