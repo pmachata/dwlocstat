@@ -246,6 +246,12 @@ public:
     ret.m_stack.pop_back ();
     return ret;
   }
+
+  cu_iterator
+  cu () const
+  {
+    return m_cuit;
+  }
 };
 
 class attr_iterator
