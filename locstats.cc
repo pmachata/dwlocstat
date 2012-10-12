@@ -705,11 +705,11 @@ process (Dwarf *dw)
 
       if ((dump & die_type).any ())
 	{
-#define TYPE(T) << (die_type.test (dt_##T) ? " "#T : "")
-	  std::cerr << "dumping" DIE_TYPES << " DIE" << std::endl;
+#define TYPE(T) << (die_type.test (dt_##T) ? #T" " : "")
+	  std::cerr DIE_TYPES << "DIE:" << std::endl;
 #undef TYPE
 
-	  std::string pad = "";
+	  std::string pad = " ";
 	  for (auto &die2: it.stack ())
 	    {
 	      std::cerr << pad << pri::ref (&die2) << " "
