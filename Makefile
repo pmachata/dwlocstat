@@ -9,16 +9,17 @@ ALLSOURCES = $(foreach dir,$(DIRS),					   \
 CCSOURCES = $(filter %.cc,$(ALLSOURCES))
 DEPFILES = $(patsubst %.cc,%.cc-dep,$(CCSOURCES))
 
-CXXFLAGS = -g -Wall
-CFLAGS = -g -Wall
+CXXFLAGS += -g -Wall
+CFLAGS += -g -Wall
 
 all: $(TARGETS)
 
 %.cc-dep $(TARGETS): CXXFLAGS += -std=c++0x
+$(TARGETS): override LDFLAGS += -ldw
 
 locstat: locstats.o die_locus.o dwarfstrings.o files.o locus.o	\
-	option.o section_id.o pri.o -ldw
-dumpdies: dumpdies.o files.o dwarfstrings.o -ldw
+	option.o section_id.o pri.o
+dumpdies: dumpdies.o files.o dwarfstrings.o
 
 -include $(DEPFILES)
 
