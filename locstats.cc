@@ -34,7 +34,7 @@
 
 global_opt<string_option> opt_ignore
   ("Skip certain DIEs.  class may be one of single_addr, artificial, inlined, \
-inlined_subroutine, no_coverage, mutable, or immutable.",
+inlined_subroutine, no_coverage, mutable, immutable, implicit_pointer.",
    "class[,...]", "ignore");
 
 global_opt<string_option> opt_dump
@@ -49,6 +49,10 @@ or special value 0.0 indicating cases with no coverage whatsoever \
 
 global_opt<void_option> opt_show_progess
   ("Show progress.", "show-progress", 'p');
+
+global_opt<void_option> opt_ignore_implicit_pointer
+  ("Turn off special handling of DW_OP_GNU_implicit_pointer.",
+   "ignore-implicit-pointer");
 
 // where.c needs to know how to format certain wheres.  The module
 // doesn't know that we don't use these :)
@@ -66,7 +70,8 @@ show_refs ()
   TYPE(inlined_subroutine)	\
   TYPE(no_coverage)		\
   TYPE(mutable)			\
-  TYPE(immutable)
+  TYPE(immutable)		\
+  TYPE(implicit_pointer)
 
 struct tabrule
 {
@@ -231,6 +236,8 @@ class mutability_t;
 static die_action process_location (Dwarf_Attribute *locattr,
 				    ranges_t const &ranges,
 				    bool interested_mutability,
+				    bool interested_implicit,
+				    bool full_implicit,
 				    std::bitset<dt__count> &die_type,
 				    mutability_t &mut,
 				    int &coverage);
@@ -239,6 +246,7 @@ static die_action process_implicit_pointer (Dwarf_Attribute *locattr,
 					    Dwarf_Op *op,
 					    ranges_t const &ranges,
 					    bool interested_mutability,
+					    bool interested_implicit,
 					    std::bitset<dt__count> &die_type,
 					    mutability_t &mut,
 					    int &coverage);
@@ -271,7 +279,7 @@ public:
 
   die_action
   locexpr (Dwarf_Attribute *attr, ranges_t const &ranges,
-	   Dwarf_Op *expr, size_t len)
+	   Dwarf_Op *expr, size_t len, bool full_implicit)
   {
     // We scan the expression looking for DW_OP_{bit_,}piece operators
     // which mark ends of sub-expressions to us.  Some operators
@@ -301,12 +309,21 @@ public:
 	  break;
 
 	case DW_OP_GNU_implicit_pointer:
+	  if (!full_implicit)
+	    {
+	      set_both ();
+	      return da_ok;
+	    }
+
 	  // Mutability of implicit pointer depends on mutability of
-	  // referenced expression.
+	  // referenced expression.  We don't want referenced DIE's
+	  // type to surface at this DIE, and we can therefore pass
+	  // false to interested_implicit.
 	  std::bitset<dt__count> ref_die_type;
 	  int coverage = 0;
 	  if (die_action a = (process_implicit_pointer
-			      (attr, expr + i, ranges, true,
+			      (attr, expr + i, ranges,
+			       true, false,
 			       ref_die_type, *this, coverage)))
 	    return a;
 
@@ -355,6 +372,7 @@ process_implicit_pointer (Dwarf_Attribute *locattr,
 			  Dwarf_Op *op,
 			  ranges_t const &ranges,
 			  bool interested_mutability,
+			  bool interested_implicit,
 			  std::bitset<dt__count> &die_type,
 			  mutability_t &mut,
 			  int &coverage)
@@ -371,13 +389,15 @@ process_implicit_pointer (Dwarf_Attribute *locattr,
     }
 
   return process_location (&ref_attr, ranges, interested_mutability,
-			   die_type, mut, coverage);
+			   interested_implicit, true, die_type, mut, coverage);
 }
 
 static die_action
 process_location (Dwarf_Attribute *locattr,
 		  ranges_t const &ranges,
 		  bool interested_mutability,
+		  bool interested_implicit,
+		  bool full_implicit,
 		  std::bitset<dt__count> &die_type,
 		  mutability_t &mut,
 		  int &coverage)
@@ -409,13 +429,16 @@ process_location (Dwarf_Attribute *locattr,
 	// singleton DW_OP_addr expression.
 	die_type.set (dt_single_addr);
 
-      else if (len == 1 && expr[0].atom == DW_OP_GNU_implicit_pointer)
+      else if (full_implicit
+	       && len == 1 && expr[0].atom == DW_OP_GNU_implicit_pointer)
 	return process_implicit_pointer (locattr, expr, ranges,
 					 interested_mutability,
+					 interested_implicit,
 					 die_type, mut, coverage);
 
       if (interested_mutability)
-	if (die_action a = mut.locexpr (locattr, ranges, expr, len))
+	if (die_action a = mut.locexpr (locattr, ranges, expr, len,
+					full_implicit))
 	  return a;
       coverage = (len == 0) ? cov_00 : 100;
     }
@@ -459,21 +482,30 @@ process_location (Dwarf_Attribute *locattr,
 	      bool cover = false;
 	      for (int i = 0; i < got; ++i)
 		{
+		  if (exprlens[i] == 0)
+		    continue;
+
 		  if (interested_mutability)
 		    if (die_action a = mut.locexpr (locattr, ranges,
-						    exprs[i], exprlens[i]))
+						    exprs[i], exprlens[i],
+						    full_implicit))
 		      return a;
 
-		  if (exprlens[i] > 1
-		      || exprs[i]->atom != DW_OP_GNU_implicit_pointer)
+		  bool sole_implicit = exprlens[i] == 1
+		    && exprs[i]->atom == DW_OP_GNU_implicit_pointer;
+		  if (!sole_implicit || !full_implicit)
+		    // Either it's not implicit pointer, or it is, but
+		    // we don't care.
 		    cover = true;
+		  if (sole_implicit && interested_implicit)
+		    die_type.set (dt_implicit_pointer);
 		}
 
 	      // If the address is uncovered at this point, look again
 	      // for singleton DW_OP_GNU_implicit_pointer's.  We need
 	      // to figure out whether at least one of them covers
 	      // this address.
-	      if (!cover)
+	      if (!cover && full_implicit)
 		for (int i = 0; i < got; ++i)
 		  if (exprlens[i] == 1
 		      && exprs[i]->atom == DW_OP_GNU_implicit_pointer)
@@ -482,8 +514,9 @@ process_location (Dwarf_Attribute *locattr,
 		      int this_coverage;
 		      if (die_action a = (process_implicit_pointer
 					  (locattr, exprs[i], this_range,
-					   interested_mutability, die_type,
-					   mut, this_coverage)))
+					   interested_mutability,
+					   interested_implicit,
+					   die_type, mut, this_coverage)))
 			{
 			  coverage = cov_00;
 			  return a;
@@ -549,6 +582,8 @@ process (Dwarf *dw)
   std::bitset<dt__count> interested = ignore | dump;
   bool interested_mutability
     = interested.test (dt_mutable) || interested.test (dt_immutable);
+  bool interested_implicit = interested.test (dt_implicit_pointer);
+  bool full_implicit = !opt_ignore_implicit_pointer.seen ();
   bool show_progress = opt_show_progess.seen ();
 
   cu_iterator prev_cit = cu_iterator::end ();
@@ -666,6 +701,8 @@ process (Dwarf *dw)
 	{
 	  if (process_location (locattr, find_ranges (it),
 				interested_mutability,
+				interested_implicit,
+				full_implicit,
 				die_type, mut, coverage) != da_ok)
 	    continue;
 	}
