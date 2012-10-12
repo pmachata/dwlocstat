@@ -1,0 +1,166 @@
+.\"Copyright (C) 2010, 2011, 2012 Red Hat, Inc.
+.\"This file is part of dwlocstat.
+.\"
+.\"This file is free software; you can redistribute it and/or modify
+.\"it under the terms of the GNU General Public License as published by
+.\"the Free Software Foundation; either version 3 of the License, or
+.\"(at your option) any later version.
+.\"
+.\"elfutils is distributed in the hope that it will be useful, but
+.\"WITHOUT ANY WARRANTY; without even the implied warranty of
+.\"MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\"GNU General Public License for more details.
+.\"
+.\"You should have received a copy of the GNU General Public License
+.\"along with this program.  If not, see <http://www.gnu.org/licenses/>.
+.TH dwlocstat 1
+.SH NAME
+dwlocstat - A tool for examining Dwarf location info coverage
+
+.BH SYNOPSIS
+.B dwlocstat
+[\fI--dump=CLASSES\fR] [\fI--ignore=CLASSES\fR]
+[\fI--ignore-implicit-pointer\fR] [{\fI-p\fR|\fI--show-progress\fR}]
+[\fI--tabulate=START[:STEP][,...]\fR] \fIFILE\fR...
+.br
+.B dwlocstat
+[{\fI--help\fR|\fI-?\fI}] [\fI--usage\fR]
+
+.SH DESCRIPTION
+.B ltrace
+is a tool for examining Dwarf location info coverage.  It goes through
+DIEs of given binary's debug info that represent variables and
+function parameters.  For each such DIE, it computes coverage of that
+DIE's range (list of addresses of DIE's scope) by location expressions
+(a description of where given variable is located at given location:
+e.g. a variable can be in a register).
+
+Coverage is expressed by percentage of covered addresses of DIE's
+scope.  If each address of DIE's scope is covered by at least one
+location expression, the coverage is 100%.  If none are covered at
+all, the coverage is 0.0% (sharp zero).  The program assigns coverage
+to each relevant DIE, and then tabulates the data.  Output might look
+something like this:
+
+    coverage%       samples         cumulative
+    0..10           1049/29%        1049/29%
+    11..20          67/1%           1116/31%
+    21..30          95/2%           1211/34%
+    31..40          84/2%           1295/36%
+    41..50          69/1%           1364/38%
+    51..60          100/2%          1464/41%
+    61..70          58/1%           1522/42%
+    71..80          85/2%           1607/45%
+    81..90          102/2%          1709/48%
+    91..100         1851/51%        3560/100%
+
+This says that there were 1049 variable or parameter DIEs whose
+coverage was less than or equal to 10%.  Those 1049 DIEs comprise 29%
+of total number of processed DIEs, which is 3560.  The way theh
+tabulation is done can be adjusted by using option
+.I --tabulate\fR.
+See below for details on how to adjust tabulation.
+
+In addition to this, dwlocstat allows dumping DIEs matching certain
+criteria, such as all inlined DIEs.  It can similarly exclude such
+DIEs from consideration.  This is configurable using options
+.I --dump
+and
+.I --ignore
+respectively.  See below for details on supported classes.
+
+.SH OPTIONS
+
+.TP
+\fB--tabulate=\fISTART\fR[:\fISTEP\fR][,\fI...\fR]
+Tabulation script consists of series of comma-separated \fBstops\fR.
+Each line of tabulation output captures percentages that are above
+previous stop and below or at the next stop.  Each stop can be either
+an integer 0-100, or a special mark \fB0.0\fR, which denotes DIEs
+whose no addresses at all are covered.  This deffers from plain
+\fB0\fR, which describes also DIEs that are covered so poorly, that
+the percentage rounds down to zero.  (Percentages round down.)
+
+Several regularly spaced stops can be abbreviated using a short-hand
+notation \fISTART\fR:\fISTEP\fR.  \fISTEP\fR is integer 0-100.
+
+Default tabulation script is 10:10, the output of which is displayed
+above.  As an example, the tabulation script \fB0.0,10:10,99\fR would
+have two extra lines: one for sharp zero, one for 100%.  That covers
+cases that have either no coverage at all, or are covered fully.
+
+.TP
+\fB--ignore=\fICLASS\fR[,\fI...\fR]
+DIEs that match those passed in comma-separated list of classes are
+not included in analysis.  The following classes are recognized:
+
+.B single_addr
+DIEs whose location expression is sole DW_OP_addr operand.  Those are
+generally global and static variables.
+
+.B artificial
+DIEs with attribute DW_AT_artificial.
+
+.B inlined
+DIEs with attribute DW_AT_inline or children of such DIE.
+
+.B inlined_subroutine
+DIEs that are DW_TAG_inlined_subroutine, inlined (in the above sense)
+DIEs that are DW_TAG_subprogram, or children on such DIEs.
+
+.B no_coverage
+DIEs with coverage of \fB0.0\fR (see above).
+
+.B implicit_pointer
+DIEs that use DW_OP_GNU_implicit_pointer.
+
+.B immutable
+DIEs whose location expression describes immutable object.  Location
+expressions that don't use with DW_OP_implicit_value,
+DW_OP_stack_value are immutable.
+
+.B mutable
+DIEs whose location expression is not immutable.  Not that DIE can be
+both mutable and immutable.  When location expression is complex (uses
+DW_OP_bit_piece or DW_OP_piece), each part can have different
+mutability.  Furthermore, if full analysis of
+DW_OP_GNU_implicit_pointer is disabled, the DIEs that use that
+operator are considered both mutable and immutable.
+
+.TP
+\fB--dump=\fICLASS\fR[,\fI...\fR]
+This shows references to DIEs (including full path from the root of
+the CU) that match classes passed in argument.  Possible classes and
+their meaning is the same as with \fI--ignore\fR option.
+
+.TP
+.B --ignore-implicit-pointer
+When a location expression uses operator DW_OP_GNU_implicit_pointer,
+then it is handled a bit differently.  When an expression is
+encountered that uses this operator, and no other expression covers
+the address under consideration, such address is not counted as
+covered.  Instead the program checks whether the location expression
+at the DIE referenced by this operator covers this address.  With this
+option, \fBdwlocstat\fR will instead consider such addresses covered.
+
+.TP
+.B -p, --show-progress
+Show each CU DIE as the file is processed.
+
+.SH AUTHOR
+Written by Petr Machata <pmachata@redhat.com>
+
+.SH "REPORTING BUGS"
+Report \fBdwlocstat\fR bugs to
+<https://github.com/pmachata/dwlocstat/issues> or by mail to
+<pmachata@redhat.com>.
+
+.SH COPYRIGHT
+Copyright \(co 2012 Red Hat, Inc.
+.br
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.
+.br
+Portions are licensed under LGPLv3+: GNU LGPL version 3 or later <http://gnu.org/licenses/lgpl.html>.
+
+.SH SEE ALSO
+.BR readelf (1)
