@@ -221,6 +221,40 @@ public:
   }
 };
 
+struct error
+  : public std::runtime_error
+{
+  explicit error (std::string const &what_arg)
+    : std::runtime_error (what_arg)
+  {}
+};
+
+typedef std::vector<std::pair<Dwarf_Addr, Dwarf_Addr> > ranges_t;
+
+enum die_action
+  {
+    da_ok = 0,
+    da_fail,
+    da_skip,
+  };
+
+class mutability_t;
+
+static die_action process_location (Dwarf_Attribute *locattr,
+				    ranges_t const &ranges,
+				    bool interested_mutability,
+				    std::bitset<dt__count> &die_type,
+				    mutability_t &mut,
+				    int &coverage);
+
+static die_action process_implicit_pointer (Dwarf_Attribute *locattr,
+					    Dwarf_Op *op,
+					    ranges_t const &ranges,
+					    bool interested_mutability,
+					    std::bitset<dt__count> &die_type,
+					    mutability_t &mut,
+					    int &coverage);
+
 class mutability_t
 {
   bool _m_is_mutable;
@@ -247,7 +281,9 @@ public:
     set (false);
   }
 
-  void locexpr (Dwarf_Op *expr, size_t len)
+  die_action
+  locexpr (Dwarf_Attribute *attr, ranges_t const &ranges,
+	   Dwarf_Op *expr, size_t len)
   {
     // We scan the expression looking for DW_OP_{bit_,}piece operators
     // which mark ends of sub-expressions to us.  Some operators
@@ -275,23 +311,29 @@ public:
 	  // so it's just a complex way of computing some constant.
 	  // Thus it can be either mutable or immutable.
 	  break;
+
+	case DW_OP_GNU_implicit_pointer:
+	  // Mutability of implicit pointer depends on mutability of
+	  // referenced expression.
+	  std::bitset<dt__count> ref_die_type;
+	  int coverage = 0;
+	  if (die_action a = (process_implicit_pointer
+			      (attr, expr + i, ranges, true,
+			       ref_die_type, *this, coverage)))
+	    return a;
+
+	  // The location was valid.  This ought to be the only
+	  // operand.
+	  return da_ok;
 	};
+
     set (m);
+    return da_ok;
   }
 
   bool is_mutable () const { return _m_is_mutable; }
   bool is_immutable () const { return _m_is_immutable; }
 };
-
-struct error
-  : public std::runtime_error
-{
-  explicit error (std::string const &what_arg)
-    : std::runtime_error (what_arg)
-  {}
-};
-
-typedef std::vector<std::pair<Dwarf_Addr, Dwarf_Addr> > ranges_t;
 
 ranges_t
 die_ranges (Dwarf_Die *die)
@@ -308,20 +350,48 @@ die_ranges (Dwarf_Die *die)
 // Look through parental dies and return the non-empty ranges instance
 // closest to IT hierarchically.
 ranges_t
-find_ranges (all_dies_iterator it)
+find_ranges (all_dies_iterator jt)
 {
-  for (; it != all_dies_iterator::end (); it = it.parent ())
+  for (auto it = jt; it != all_dies_iterator::end (); it = it.parent ())
     {
       auto ranges = die_ranges (*it);
       if (!ranges.empty ())
 	return ranges;
+      std::cerr << " considered " << pri::ref (*it) << std::endl;
     }
-  throw error ("no ranges for this DIE");
+
+  std::stringstream ss;
+  ss << "no ranges for " << pri::ref (*jt);
+  throw error (ss.str ());
 }
 
-static bool
-process_location (all_dies_iterator it,
-		  Dwarf_Attribute *locattr,
+static die_action
+process_implicit_pointer (Dwarf_Attribute *locattr,
+			  Dwarf_Op *op,
+			  ranges_t const &ranges,
+			  bool interested_mutability,
+			  std::bitset<dt__count> &die_type,
+			  mutability_t &mut,
+			  int &coverage)
+{
+  // For implicit pointer, we are actually interested in how location
+  // expressions on target DIE cover this DIE's addresses.
+  Dwarf_Attribute ref_attr;
+  if (dwarf_getlocation_implicit_pointer (locattr, op, &ref_attr) < 0)
+    {
+      // No location expression at referenced DIE.  That means
+      // this location expression is itself empty.
+      coverage = cov_00;
+      return da_ok;
+    }
+
+  return process_location (&ref_attr, ranges, interested_mutability,
+			   die_type, mut, coverage);
+}
+
+static die_action
+process_location (Dwarf_Attribute *locattr,
+		  ranges_t const &ranges,
 		  bool interested_mutability,
 		  std::bitset<dt__count> &die_type,
 		  mutability_t &mut,
@@ -349,77 +419,108 @@ process_location (all_dies_iterator it,
   // non-list location
   else if (dwarf_getlocation (locattr, &expr, &len) == 0)
     {
-      // Globals and statics have non-list location that is a
-      // singleton DW_OP_addr expression.
       if (len == 1 && expr[0].atom == DW_OP_addr)
+	// Globals and statics have non-list location that is a
+	// singleton DW_OP_addr expression.
 	die_type.set (dt_single_addr);
+
+      else if (len == 1 && expr[0].atom == DW_OP_GNU_implicit_pointer)
+	return process_implicit_pointer (locattr, expr, ranges,
+					 interested_mutability,
+					 die_type, mut, coverage);
+
       if (interested_mutability)
-	mut.locexpr (expr, len);
+	if (die_action a = mut.locexpr (locattr, ranges, expr, len))
+	  return a;
       coverage = (len == 0) ? cov_00 : 100;
     }
 
   // location list
   else
     {
-      try
+      size_t length = 0;
+      size_t covered = 0;
+
+      // Arbitrarily assume that there will be no more than 10
+      // expressions per address.
+      size_t nlocs = 10;
+      Dwarf_Op *exprs[nlocs];
+      size_t exprlens[nlocs];
+
+      for (auto rit = ranges.begin (); rit != ranges.end (); ++rit)
 	{
-	  ranges_t ranges = find_ranges (it);
-	  size_t length = 0;
-	  size_t covered = 0;
+	  Dwarf_Addr low = rit->first;
+	  Dwarf_Addr high = rit->second;
+	  length += high - low;
+	  //std::cerr << " " << low << ".." << high << std::endl;
 
-	  // Arbitrarily assume that there will be no more than 10
-	  // expressions per address.
-	  size_t nlocs = 10;
-	  Dwarf_Op *exprs[nlocs];
-	  size_t exprlens[nlocs];
-
-	  for (auto rit = ranges.begin (); rit != ranges.end (); ++rit)
+	  for (Dwarf_Addr addr = low; addr < high; ++addr)
 	    {
-	      Dwarf_Addr low = rit->first;
-	      Dwarf_Addr high = rit->second;
-	      length += high - low;
-	      //std::cerr << " " << low << ".." << high << std::endl;
-
-	      for (Dwarf_Addr addr = low; addr < high; ++addr)
+	      int got = dwarf_getlocation_addr (locattr, addr,
+						exprs, exprlens, nlocs);
+	      if (got < 0)
 		{
-		  int got = dwarf_getlocation_addr (locattr, addr,
-						    exprs, exprlens, nlocs);
-		  if (got < 0)
-		    throw ::error (std::string ("dwarf_getlocation_addr: ")
-				   + dwarf_errmsg (-1));
+		  // XXX locus
+		  std::cerr << "error: dwarf_getlocation_addr: "
+			    << dwarf_errmsg (-1) << '.' << std::endl;
 
-		  // At least one expression for the address must
-		  // be of non-zero length for us to count that
-		  // address as covered.
-		  bool cover = false;
-		  for (int i = 0; i < got; ++i)
+		  // Skip this DIE altogether.
+		  return da_skip;
+		}
+
+	      // At least one expression for the address must
+	      // be of non-zero length for us to count that
+	      // address as covered.
+	      bool cover = false;
+	      for (int i = 0; i < got; ++i)
+		{
+		  if (interested_mutability)
+		    if (die_action a = mut.locexpr (locattr, ranges,
+						    exprs[i], exprlens[i]))
+		      return a;
+
+		  if (exprlens[i] > 1
+		      || exprs[i]->atom != DW_OP_GNU_implicit_pointer)
+		    cover = true;
+		}
+
+	      // If the address is uncovered at this point, look again
+	      // for singleton DW_OP_GNU_implicit_pointer's.  We need
+	      // to figure out whether at least one of them covers
+	      // this address.
+	      if (!cover)
+		for (int i = 0; i < got; ++i)
+		  if (exprlens[i] == 1
+		      && exprs[i]->atom == DW_OP_GNU_implicit_pointer)
 		    {
-		      if (interested_mutability)
-			mut.locexpr (exprs[i], exprlens[i]);
-		      if (exprlens[i] > 0)
-			cover = true;
+		      ranges_t this_range = {{addr, addr + 1}};
+		      int this_coverage;
+		      if (die_action a = (process_implicit_pointer
+					  (locattr, exprs[i], this_range,
+					   interested_mutability, die_type,
+					   mut, this_coverage)))
+			{
+			  coverage = cov_00;
+			  return a;
+			}
+		      if (this_coverage == 100)
+			{
+			  cover = true;
+			  break;
+			}
 		    }
 
-		  if (cover)
-		    covered++;
-		}
+	      if (cover)
+		covered++;
 	    }
-
-	  if (length == 0 || covered == 0)
-	    coverage = cov_00;
-	  else
-	    coverage = 100 * covered / length;
 	}
-      catch (::error const &e)
-	{
-	  std::cerr << "error: " << die_locus (*it) << ": "
-		    << e.what () << '.' << std::endl;
 
-	  // Skip this DIE altogether.
-	  return true;
-	}
+      if (length == 0 || covered == 0)
+	coverage = cov_00;
+      else
+	coverage = 100 * covered / length;
     }
-  return false;
+  return da_ok;
 }
 
 bool
@@ -555,11 +656,12 @@ process (Dwarf *dw)
       std::cerr << "die=" << std::hex << die.offset ()
 		<< " '" << name << '\'';
       */
+      std::cerr << pri::ref (die) << std::endl;
 
       int coverage;
       mutability_t mut;
-      if (process_location (it, locattr, interested_mutability,
-			    die_type, mut, coverage))
+      if (process_location (locattr, find_ranges (it), interested_mutability,
+			    die_type, mut, coverage) != da_ok)
 	continue;
 
       if ((ignore & die_type).any ())
