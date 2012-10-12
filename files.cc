@@ -110,8 +110,7 @@ files::open_dwarf (Dwfl *dwfl, char const *fname, int fd)
   dwfl_report_begin (dwfl);
 
   // Dup FD for dwfl to consume.
-  int dwfl_fd
-    = throw_if_failed (dup (fd), "Error: dup", mystrerror);
+  int dwfl_fd = throw_if_failed (dup (fd), "Error: dup", mystrerror);
 
   Dwfl_Module *mod
     = throw_if_failed (dwfl_report_offline (dwfl, fname, fname, dwfl_fd),
