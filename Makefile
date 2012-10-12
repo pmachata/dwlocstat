@@ -1,4 +1,4 @@
-TARGETS = dumpdies locstat
+TARGETS = dumpdies dwlocstat
 
 DIRS = .
 
@@ -17,7 +17,7 @@ all: $(TARGETS)
 %.cc-dep $(TARGETS): CXXFLAGS += -std=c++0x
 $(TARGETS): override LDFLAGS += -ldw
 
-locstat: locstats.o die_locus.o dwarfstrings.o files.o locus.o	\
+dwlocstat: locstats.o die_locus.o dwarfstrings.o files.o locus.o	\
 	option.o section_id.o pri.o
 dumpdies: dumpdies.o files.o dwarfstrings.o
 
