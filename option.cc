@@ -169,9 +169,34 @@ option_common::option_common (char const *description,
   , _m_seen (false)
 {}
 
+
+xoption<void>::xoption (char const *description,
+			char const *opt_long, char opt_short, int flags)
+  : option_common (description, NULL, opt_long, opt_short, flags)
+{
+}
+
+error_t
+xoption<void>::parse_opt (char *arg,
+			  __attribute__ ((unused)) argp_state *state)
+{
+  assert (arg == NULL);
+  _m_seen = true;
+  return 0;
+}
+
+unsigned
+value_converter<unsigned>::convert (char const *arg)
+{
+  unsigned u;
+  if (std::sscanf (arg, "%u", &u) == 1)
+    return u;
+  else
+    return -1;
+}
+
 // Trick to make sure the static options are always initialized
 // before access (it is used from various global initializers.
-
 options &
 global_opts ()
 {

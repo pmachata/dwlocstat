@@ -33,10 +33,9 @@
 #include <argp.h>
 #include <map>
 #include <vector>
-#include <cassert>
 #include <iostream>
 
-#include "option_i.hh"
+class option_i;
 
 class options
   : private std::map<int, option_i *>
@@ -178,17 +177,8 @@ class xoption<void>
 {
 public:
   xoption (char const *description,
-	   char const *opt_long, char opt_short = 0, int flags = 0)
-    : option_common (description, NULL, opt_long, opt_short, flags)
-  {
-  }
-
-  error_t parse_opt (char *arg, __attribute__ ((unused)) argp_state *state)
-  {
-    assert (arg == NULL);
-    _m_seen = true;
-    return 0;
-  }
+	   char const *opt_long, char opt_short = 0, int flags = 0);
+  error_t parse_opt (char *arg, argp_state *state);
 
   // This shouldn't be promoted to option_common, as
   // e.g. xoption<bool> will naturally have a different
@@ -211,14 +201,7 @@ struct value_converter<std::string>
 template<>
 struct value_converter<unsigned>
 {
-  static unsigned convert (char const *arg)
-  {
-    unsigned u;
-    if (std::sscanf (arg, "%u", &u) == 1)
-      return u;
-    else
-      return -1;
-  }
+  static unsigned convert (char const *arg);
 };
 
 typedef xoption<void> void_option;
