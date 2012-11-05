@@ -32,7 +32,6 @@
 #include <libintl.h>
 
 #include "dwarfstrings.h"
-#include "known-dwarf.h"
 
 const char *
 dwarf_tag_string (unsigned int tag)
