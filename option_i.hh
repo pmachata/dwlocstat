@@ -1,1 +1,0 @@
-class option_i;
