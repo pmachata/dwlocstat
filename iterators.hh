@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <elfutils/libdw.h>
 
-#include "eu-config.h"
-
 class cu_iterator
   : public std::iterator<std::input_iterator_tag, Dwarf_Die *>
 {

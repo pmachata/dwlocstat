@@ -24,7 +24,6 @@
 #include <stdexcept>
 #include <unistd.h>
 
-#include "eu-config.h"
 #include "files.hh"
 #include "messages.hh"
 
@@ -38,7 +37,7 @@ namespace
   throw_if_failed (T x, char const *msg,
 		   char const *(*errmsgcb) (int) = NULL)
   {
-    if (unlikely (failed (x)))
+    if (failed (x))
       {
 	std::stringstream ss;
 	ss << msg;

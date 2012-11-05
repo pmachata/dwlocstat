@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include <libintl.h>
 
-#include "eu-config.h"
 #include "dwarfstrings.h"
 #include "known-dwarf.h"
 
@@ -107,10 +106,10 @@ dwarf_tag_string (unsigned int tag)
   static char buf[40];
   const char *result = NULL;
 
-  if (likely (tag < nknown_tags))
+  if (tag < nknown_tags)
     result = known_tags[tag];
 
-  if (unlikely (result == NULL))
+  if (result == NULL)
     /* There are a few known extensions.  */
     switch (tag)
       {
@@ -277,10 +276,10 @@ dwarf_attr_string (unsigned int attrnum)
   static char buf[40];
   const char *result = NULL;
 
-  if (likely (attrnum < nknown_attrs))
+  if (attrnum < nknown_attrs)
     result = known_attrs[attrnum];
 
-  if (unlikely (result == NULL))
+  if (result == NULL)
     /* There are a few known extensions.  */
     switch (attrnum)
       {
