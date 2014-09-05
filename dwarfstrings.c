@@ -93,7 +93,6 @@ dwarf_tag_string (unsigned int tag)
       [DW_TAG_unspecified_type] = "unspecified_type",
       [DW_TAG_partial_unit] = "partial_unit",
       [DW_TAG_imported_unit] = "imported_unit",
-      [DW_TAG_mutable_type] = "mutable_type",
       [DW_TAG_condition] = "condition",
       [DW_TAG_shared_type] = "shared_type",
       [DW_TAG_type_unit] = "type_unit",
