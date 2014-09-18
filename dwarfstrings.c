@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2010, 2011, 2012 Red Hat, Inc.
+   Copyright (C) 2010, 2011, 2012, 2014 Red Hat, Inc.
    This file is part of elfutils.
 
    This file is free software; you can redistribute it and/or modify
@@ -93,7 +93,6 @@ dwarf_tag_string (unsigned int tag)
       [DW_TAG_unspecified_type] = "unspecified_type",
       [DW_TAG_partial_unit] = "partial_unit",
       [DW_TAG_imported_unit] = "imported_unit",
-      [DW_TAG_mutable_type] = "mutable_type",
       [DW_TAG_condition] = "condition",
       [DW_TAG_shared_type] = "shared_type",
       [DW_TAG_type_unit] = "type_unit",
@@ -444,6 +443,10 @@ dwarf_attr_string (unsigned int attrnum)
 
       case DW_AT_GNU_all_source_call_sites:
 	result = "GNU_all_source_call_sites";
+	break;
+
+      case DW_AT_GNU_macros:
+	result = "GNU_macros";
 	break;
 
       default:
