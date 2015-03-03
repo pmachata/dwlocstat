@@ -24,7 +24,6 @@
 
 #include "iterators.hh"
 #include "option.hh"
-#include "pri.hh"
 #include "files.hh"
 #include "dwarfstrings.h"
 
@@ -556,6 +555,24 @@ bool
 is_inlined (Dwarf_Die *die)
 {
   return die_flag_value (die, DW_AT_inline);
+}
+
+namespace pri
+{
+  struct ref
+  {
+    Dwarf_Off const off;
+
+    ref (Dwarf_Die *die)
+      : off (dwarf_dieoffset (die))
+    {}
+  };
+
+  std::ostream &
+  operator << (std::ostream &os, ref const &obj)
+  {
+    return os << std::hex << "DIE " << obj.off;
+  }
 }
 
 void
