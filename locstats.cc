@@ -52,15 +52,6 @@ global_opt<void_option> opt_ignore_implicit_pointer
   ("Turn off special handling of DW_OP_GNU_implicit_pointer.",
    "ignore-implicit-pointer");
 
-// where.c needs to know how to format certain wheres.  The module
-// doesn't know that we don't use these :)
-extern "C"
-bool
-show_refs ()
-{
-  return false;
-}
-
 #define DIE_TYPES		\
   TYPE(single_addr)		\
   TYPE(artificial)		\
