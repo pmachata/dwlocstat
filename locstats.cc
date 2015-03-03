@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2010, 2011, 2012 Red Hat, Inc.
+   Copyright (C) 2010, 2011, 2012, 2015 Red Hat, Inc.
    This file is part of dwlocstat.
 
    This file is free software; you can redistribute it and/or modify
@@ -26,7 +26,6 @@
 #include "option.hh"
 #include "pri.hh"
 #include "files.hh"
-#include "die_locus.hh"
 #include "dwarfstrings.h"
 
 #define DIE_OPTSTRING				\

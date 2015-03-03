@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2011, 2012 Red Hat, Inc.
+   Copyright (C) 2011, 2012, 2015 Red Hat, Inc.
    This file is part of dwlocstat.
 
    This file is free software; you can redistribute it and/or modify
@@ -25,7 +25,6 @@
 #include <unistd.h>
 
 #include "files.hh"
-#include "messages.hh"
 
 namespace
 {
