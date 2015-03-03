@@ -15,43 +15,19 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef _DWARFLINT_FILES_H_
-#define _DWARFLINT_FILES_H_
+#ifndef DWLOCSTAT_FILES_HH
+#define DWLOCSTAT_FILES_HH
 
 #include <elfutils/libdwfl.h>
 #include <elfutils/libdw.h>
-
-// The functions in this module do their own error handling, and throw
-// std::runtime_error with descriptive error message on error.
-namespace files
-{
-  int open (char const *fname);
-
-  Dwfl *open_dwfl ()
-    __attribute__ ((nonnull, malloc));
-
-  Dwarf *open_dwarf (Dwfl *dwfl, char const *fname, int fd)
-    __attribute__ ((nonnull, malloc));
-}
 
 class dwfl
 {
   Dwfl *m_context;
 public:
-  dwfl ()
-    : m_context (files::open_dwfl ())
-  {}
-
-  Dwarf *
-  open_dwarf (char const *fname)
-  {
-    return files::open_dwarf (m_context, fname, files::open (fname));
-  }
-
-  ~dwfl ()
-  {
-    dwfl_end (m_context);
-  }
+  dwfl ();
+  Dwarf *open_dwarf (char const *fname);
+  ~dwfl ();
 };
 
-#endif /* _DWARFLINT_FILES_H_ */
+#endif /* DWLOCSTAT_FILES_HH */

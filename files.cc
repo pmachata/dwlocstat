@@ -28,8 +28,11 @@
 
 namespace
 {
-  inline bool failed (void *ptr) { return ptr == NULL; }
-  inline bool failed (int i) { return i < 0; }
+  inline bool failed (void *ptr)
+  { return ptr == NULL; }
+
+  inline bool failed (int i)
+  { return i < 0; }
 
   template <class T>
   inline T
@@ -47,76 +50,107 @@ namespace
     return x;
   }
 
-  char const *
-  mystrerror (int i)
+  Dwfl *
+  open_dwfl ()
   {
-    if (i == -1)
-      i = errno;
-    return strerror (i);
+    const static Dwfl_Callbacks callbacks =
+      {
+	.find_elf = dwfl_build_id_find_elf,
+	.find_debuginfo = dwfl_standard_find_debuginfo,
+	.section_address = dwfl_offline_section_address,
+      };
+
+    return throw_if_failed (dwfl_begin (&callbacks),
+			    "Couldn't initialize DWFL");
   }
 }
 
-int
-files::open (char const *fname)
-{
-  int fd = ::open (fname, O_RDONLY);
-  if (fd == -1)
-    {
-      std::stringstream ss;
-      ss << "Cannot open input file: " << strerror (errno) << ".";
-      throw std::runtime_error (ss.str ());
-    }
+dwfl::dwfl ()
+  : m_context (open_dwfl ())
+{}
 
-  return fd;
-}
-
-Dwfl *
-files::open_dwfl ()
+namespace
 {
-  static class my_callbacks
-    : public Dwfl_Callbacks
+  struct fd
   {
-    // Stub libdwfl callback, only the ELF handle already open is ever used.
-    static int
-    find_no_debuginfo (Dwfl_Module *mod __attribute__ ((unused)),
-		       void **userdata __attribute__ ((unused)),
-		       const char *modname __attribute__ ((unused)),
-		       Dwarf_Addr base __attribute__ ((unused)),
-		       const char *file_name __attribute__ ((unused)),
-		       const char *debuglink_file __attribute__ ((unused)),
-		       GElf_Word debuglink_crc __attribute__ ((unused)),
-		       char **debuginfo_file_name __attribute__ ((unused)))
+    int m_fd;
+    operator int () { return m_fd; }
+
+    fd (int fd)
+      : m_fd (fd)
     {
-      return -1;
+      if (m_fd == -1)
+	throw std::runtime_error (strerror (errno));
     }
 
-  public:
-    my_callbacks ()
-    {
-      section_address = dwfl_offline_section_address;
-      find_debuginfo = find_no_debuginfo;
-    }
-  } cbs;
+    fd (fd const &that); /* never implemented */
 
-  return throw_if_failed (dwfl_begin (&cbs),
-			  "Couldn't initialize DWFL");
+    int
+    release ()
+    {
+      int ret = m_fd;
+      m_fd = -1;
+      return ret;
+    }
+
+    ~fd ()
+    {
+      // Note that we ignore errors that could come from close.
+      // This is good enough for this use case.
+      ::close (m_fd);
+    }
+  };
+
+  struct dwfl_report
+  {
+    Dwfl *m_dwfl;
+
+    explicit dwfl_report (Dwfl *dwfl)
+      : m_dwfl (dwfl)
+    {
+      dwfl_report_begin (m_dwfl);
+    }
+
+    Dwfl_Module *
+    offline (Dwfl *dwfl, const char *name,
+	     const char *file_name, int fd)
+    {
+      return throw_if_failed
+	(dwfl_report_offline (m_dwfl, name, file_name, fd),
+	 "dwfl_report_offline", dwfl_errmsg);
+    }
+
+    ~dwfl_report ()
+    {
+      dwfl_report_end (m_dwfl, NULL, NULL);
+    }
+  };
 }
 
 Dwarf *
-files::open_dwarf (Dwfl *dwfl, char const *fname, int fd)
+dwfl::open_dwarf (char const *fname)
 {
-  dwfl_report_begin (dwfl);
+  Dwfl_Module *mod;
+  {
+    fd fd = open (fname, O_RDONLY);
 
-  // Dup FD for dwfl to consume.
-  int dwfl_fd = throw_if_failed (dup (fd), "Error: dup", mystrerror);
+    dwfl_report report (m_context);
+    mod = report.offline (m_context, fname, fname, fd);
 
-  Dwfl_Module *mod
-    = throw_if_failed (dwfl_report_offline (dwfl, fname, fname, dwfl_fd),
-		       "Couldn't add DWFL module", dwfl_errmsg);
-  dwfl_report_end (dwfl, NULL, NULL);
+    fd.release ();
+  }
+
   Dwarf_Addr bias;
   throw_if_failed (dwfl_module_getelf (mod, &bias),
 		   "Couldn't open ELF.", dwfl_errmsg);
-  return throw_if_failed (dwfl_module_getdwarf (mod, &bias),
-			  "Couldn't obtain DWARF descriptor", dwfl_errmsg);
+
+  Dwarf *ret = throw_if_failed (dwfl_module_getdwarf (mod, &bias),
+				"Couldn't obtain DWARF descriptor",
+				dwfl_errmsg);
+  return ret;
+}
+
+dwfl::~dwfl ()
+{
+  dwfl_end (m_context);
 }
