@@ -1,4 +1,4 @@
-TARGETS = dumpdies dwlocstat
+TARGETS = dwlocstat
 
 DIRS = .
 
@@ -18,7 +18,6 @@ all: $(TARGETS)
 $(TARGETS): override LDFLAGS += -ldw
 
 dwlocstat: locstats.o dwarfstrings.o files.o option.o section_id.o pri.o
-dumpdies: dumpdies.o files.o dwarfstrings.o
 
 -include $(DEPFILES)
 
