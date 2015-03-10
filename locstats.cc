@@ -99,23 +99,28 @@ static struct argp argp =
 
 
 #define DIE_TYPES		\
-  TYPE(single_addr)		\
-  TYPE(artificial)		\
-  TYPE(inlined)			\
-  TYPE(inlined_subroutine)	\
-  TYPE(no_coverage)		\
-  TYPE(mutable)			\
-  TYPE(immutable)		\
-  TYPE(implicit_pointer)
+  TYPE (single_addr)		\
+  TYPE (artificial)		\
+  TYPE (inlined)		\
+  TYPE (inlined_subroutine)	\
+  TYPE (no_coverage)		\
+  TYPE (mutable)		\
+  TYPE (immutable)		\
+  TYPE (implicit_pointer)
 
 struct tabrule
 {
   int start;
   int step;
-  tabrule (int a_start, int a_step)
-    : start (a_start), step (a_step)
+
+  explicit tabrule (int a_start, int a_step)
+    : start (a_start)
+    , step (a_step)
   {}
-  bool operator < (tabrule const &other) const {
+
+  bool
+  operator< (tabrule const &other) const
+  {
     return start < other.start;
   }
 };
@@ -124,22 +129,23 @@ struct tabrule
 const int cov_00 = -1;
 
 struct tabrules_t
-  : public std::vector<tabrule>
+  : public std::vector <tabrule>
 {
-  tabrules_t (std::string const &rule)
+  explicit tabrules_t (std::string const &rule)
   {
     std::stringstream ss;
     ss << rule;
 
-    std::string item;
-    while (std::getline (ss, item, ','))
+    for (std::string item; std::getline (ss, item, ','); )
       {
 	if (item.empty ())
 	  continue;
+
 	int start;
 	int step;
 	char const *ptr = item.c_str ();
 
+	// Parse the START part of tabulation rule.
 	if (item.length () >= 3
 	    && std::strncmp (ptr, "0.0", 3) == 0)
 	  {
@@ -149,6 +155,7 @@ struct tabrules_t
 	else
 	  start = std::strtol (ptr, const_cast<char **> (&ptr), 10);
 
+	// Parse the :STEP part.
 	if (*ptr == 0)
 	  step = 0;
 	else
@@ -175,7 +182,8 @@ struct tabrules_t
     std::sort (begin (), end ());
   }
 
-  void next ()
+  void
+  next ()
   {
     if (at (0).step == 0)
       erase (begin ());
@@ -195,38 +203,55 @@ struct tabrules_t
       }
   }
 
-  bool match (int value) const
+  bool
+  match (int value) const
   {
     return at (0).start == value;
   }
 };
 
+template <class T>
+struct counter
+{
+  enum { value = T::value + 1 };
+};
+
+template <>
+struct counter <void>
+{
+  enum { value = 1 };
+};
+
 #define TYPE(T) dt_##T,
-  enum die_type_e
-    {
-      DIE_TYPES
-      dt__count
-    };
+enum die_type
+  {
+    DIE_TYPES
+  };
 #undef TYPE
 
+enum
+  {
+#define TYPE(T) counter <
+    count_die_types = DIE_TYPES
+#undef TYPE
+#define TYPE(T) >
+    void DIE_TYPES::value,
+#undef TYPE
+  };
+
 class die_type_matcher
-  : public std::bitset<dt__count>
+  : public std::bitset <count_die_types>
 {
-  class invalid {};
-  std::pair<die_type_e, bool>
+  die_type
   parse (std::string &desc)
   {
-    bool val = true;
-    if (desc == "")
-      throw invalid ();
-
-#define TYPE(T)					\
-    if (desc == #T)				\
-      return std::make_pair (dt_##T, val);
+#define TYPE(T)		\
+    if (desc == #T)	\
+      return dt_##T;
     DIE_TYPES
 #undef TYPE
 
-      throw invalid ();
+    throw std::runtime_error ("Invalid DIE type `" + desc + "'");
   }
 
 public:
@@ -235,29 +260,12 @@ public:
     std::stringstream ss;
     ss << rule;
 
-    std::string item;
-    while (std::getline (ss, item, ','))
-      try
-	{
-	  std::pair<die_type_e, bool> const &ig = parse (item);
-	  set (ig.first, ig.second);
-	}
-      catch (invalid &i)
-	{
-	  std::cerr << "Invalid die type: " << item << std::endl;
-	}
+    for (std::string item; std::getline (ss, item, ','); )
+      set (parse (item));
   }
 };
 
-struct error
-  : public std::runtime_error
-{
-  explicit error (std::string const &what_arg)
-    : std::runtime_error (what_arg)
-  {}
-};
-
-typedef std::vector<std::pair<Dwarf_Addr, Dwarf_Addr> > ranges_t;
+typedef std::vector <std::pair <Dwarf_Addr, Dwarf_Addr> > ranges_t;
 
 enum die_action
   {
@@ -273,7 +281,7 @@ static die_action process_location (Dwarf_Attribute *locattr,
 				    bool interested_mutability,
 				    bool interested_implicit,
 				    bool full_implicit,
-				    std::bitset<dt__count> &die_type,
+				    std::bitset <count_die_types> &die_type,
 				    mutability_t &mut,
 				    int &coverage);
 
@@ -282,7 +290,7 @@ static die_action process_implicit_pointer (Dwarf_Attribute *locattr,
 					    ranges_t const &ranges,
 					    bool interested_mutability,
 					    bool interested_implicit,
-					    std::bitset<dt__count> &die_type,
+					    std::bitset <count_die_types> &die_type,
 					    mutability_t &mut,
 					    int &coverage);
 
@@ -344,7 +352,7 @@ public:
 	  break;
 
 	case DW_OP_GNU_implicit_pointer:
-	  if (!full_implicit)
+	  if (! full_implicit)
 	    {
 	      set_both ();
 	      return da_ok;
@@ -354,7 +362,7 @@ public:
 	  // referenced expression.  We don't want referenced DIE's
 	  // type to surface at this DIE, and we can therefore pass
 	  // false to interested_implicit.
-	  std::bitset<dt__count> ref_die_type;
+	  std::bitset <count_die_types> ref_die_type;
 	  int coverage = 0;
 	  if (die_action a = (process_implicit_pointer
 			      (attr, expr + i, ranges,
@@ -399,7 +407,7 @@ find_ranges (elfutils::all_dies_iterator it)
 	return ranges;
     }
 
-  throw error ("no ranges at this or parental DIEs");
+  throw std::runtime_error ("no ranges at this or parental DIEs");
 }
 
 static die_action
@@ -408,7 +416,7 @@ process_implicit_pointer (Dwarf_Attribute *locattr,
 			  ranges_t const &ranges,
 			  bool interested_mutability,
 			  bool interested_implicit,
-			  std::bitset<dt__count> &die_type,
+			  std::bitset <count_die_types> &die_type,
 			  mutability_t &mut,
 			  int &coverage)
 {
@@ -433,7 +441,7 @@ process_location (Dwarf_Attribute *locattr,
 		  bool interested_mutability,
 		  bool interested_implicit,
 		  bool full_implicit,
-		  std::bitset<dt__count> &die_type,
+		  std::bitset <count_die_types> &die_type,
 		  mutability_t &mut,
 		  int &coverage)
 {
@@ -503,8 +511,11 @@ process_location (Dwarf_Attribute *locattr,
 	      int got = dwarf_getlocation_addr (locattr, addr,
 						exprs, exprlens, nlocs);
 	      if (got < 0)
-		throw ::error ((std::string)"dwarf_getlocation_addr: "
-			       + dwarf_errmsg (-1));
+		{
+		  std::stringstream ss;
+		  ss << "dwarf_getlocation_addr: " << dwarf_errmsg (-1);
+		  throw std::runtime_error (ss.str ());
+		}
 
 	      // At least one expression for the address must
 	      // be of non-zero length for us to count that
@@ -523,7 +534,7 @@ process_location (Dwarf_Attribute *locattr,
 
 		  bool sole_implicit = exprlens[i] == 1
 		    && exprs[i]->atom == DW_OP_GNU_implicit_pointer;
-		  if (!sole_implicit || !full_implicit)
+		  if (! sole_implicit || ! full_implicit)
 		    // Either it's not implicit pointer, or it is, but
 		    // we don't care.
 		    cover = true;
@@ -535,7 +546,7 @@ process_location (Dwarf_Attribute *locattr,
 	      // for singleton DW_OP_GNU_implicit_pointer's.  We need
 	      // to figure out whether at least one of them covers
 	      // this address.
-	      if (!cover && full_implicit)
+	      if (! cover && full_implicit)
 		for (int i = 0; i < got; ++i)
 		  if (exprlens[i] == 1
 		      && exprs[i]->atom == DW_OP_GNU_implicit_pointer)
@@ -582,9 +593,13 @@ die_flag_value (Dwarf_Die *die, unsigned attr_name)
   if (dwarf_attr (die, attr_name, &attr) != NULL)
     {
       if (dwarf_formflag (&attr, &val) != 0)
-	throw error (std::string ("dwarf_formflag(")
-		     + dwarf_attr_string (attr_name)
-		     + "): " + dwarf_errmsg (-1));
+	{
+	  std::stringstream ss;
+	  ss << "dwarf_formflag(" << dwarf_attr_string (attr_name) << "): "
+	     << dwarf_errmsg (-1);
+	  throw std::runtime_error (ss.str ());
+	}
+
       return val;
     }
   return false;
@@ -608,26 +623,25 @@ namespace pri
   };
 
   std::ostream &
-  operator << (std::ostream &os, ref const &obj)
+  operator<< (std::ostream &os, ref const &obj)
   {
     return os << std::hex << "DIE " << obj.off;
   }
 }
 
 void
-process (Dwarf *dw)
+process (Dwarf *dw,
+	 die_type_matcher const &ignore, die_type_matcher const &dump)
 {
   // map percentage->occurrences.  Percentage is cov_00..100, where
   // 0..100 is rounded-down integer division.
-  std::map<int, unsigned long> tally;
+  std::map <int, unsigned long> tally;
   unsigned long total = 0;
   for (int i = 0; i <= 100; ++i)
     tally[i] = 0;
 
   tabrules_t tabrules (opt_tabulate);
-  die_type_matcher ignore (opt_ignore);
-  die_type_matcher dump (opt_dump);
-  std::bitset<dt__count> interested = ignore | dump;
+  std::bitset <count_die_types> interested = ignore | dump;
   bool interested_mutability
     = interested.test (dt_mutable) || interested.test (dt_immutable);
   bool interested_implicit = interested.test (dt_implicit_pointer);
@@ -643,7 +657,7 @@ process (Dwarf *dw)
   for (elfutils::all_dies_iterator it (dw);
        it != elfutils::all_dies_iterator::end (); ++it)
     {
-      std::bitset<dt__count> die_type;
+      std::bitset <count_die_types> die_type;
       Dwarf_Die *die = *it;
 
       if (opt_show_progress)
@@ -659,7 +673,7 @@ process (Dwarf *dw)
 
       // We are interested in variables and formal parameters
       bool is_formal_parameter = dwarf_tag (die) == DW_TAG_formal_parameter;
-      if (!is_formal_parameter && dwarf_tag (die) != DW_TAG_variable)
+      if (! is_formal_parameter && dwarf_tag (die) != DW_TAG_variable)
 	continue;
 
       // Ignore those that are just declarations
@@ -758,7 +772,7 @@ process (Dwarf *dw)
 				die_type, mut, coverage) != da_ok)
 	    continue;
 	}
-      catch (::error &e)
+      catch (std::runtime_error const &e)
 	{
 	  std::cerr << "error: " << pri::ref (*it)
 		    << ": " << e.what () << ". (skipping)" << std::endl;
@@ -860,7 +874,7 @@ process (Dwarf *dw)
 }
 
 int
-main(int argc, char *argv[])
+main (int argc, char *argv[])
 {
   /* Set locale.  */
   setlocale (LC_ALL, "");
@@ -882,16 +896,19 @@ main(int argc, char *argv[])
       std::exit (1);
     }
 
+  die_type_matcher ignore (opt_ignore);
+  die_type_matcher dump (opt_dump);
+
   bool only_one = remaining + 1 == argc;
   do
     {
       char const *fname = argv[remaining];
-      if (!only_one)
+      if (! only_one)
 	std::cout << std::endl << fname << ":" << std::endl;
 
       dwfl dwfl;
       Dwarf *dw = dwfl.open_dwarf (fname);
-      process (dw);
+      process (dw, ignore, dump);
     }
   while (++remaining < argc);
 }
