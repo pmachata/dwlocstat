@@ -17,7 +17,7 @@ all: $(TARGETS)
 %.cc-dep $(TARGETS): override CXXFLAGS += -std=c++0x
 $(TARGETS): override LDFLAGS += -ldw
 
-dwlocstat: locstats.o dwarfstrings.o files.o option.o
+dwlocstat: locstats.o dwarfstrings.o files.o
 
 -include $(DEPFILES)
 

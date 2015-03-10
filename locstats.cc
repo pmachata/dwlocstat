@@ -20,37 +20,83 @@
 #include <cstring>
 #include <libintl.h>
 #include <algorithm>
-#include <dwarf.h>
+#include <iostream>
+#include <map>
+#include <cstdio>
 
-#include "iterators.hh"
-#include "option.hh"
+#include <dwarf.h>
+#include <argp.h>
+
 #include "files.hh"
 #include "dwarfstrings.h"
+#include "iterators.hh"
 
-#define DIE_OPTSTRING				\
-  "}[,...]"
+namespace elfutils
+{
+  using ::all_dies_iterator;
+  using ::cu_iterator;
+}
 
-global_opt<string_option> opt_ignore
-  ("Skip certain DIEs.  class may be one of single_addr, artificial, inlined, \
-inlined_subroutine, no_coverage, mutable, immutable, implicit_pointer.",
-   "class[,...]", "ignore");
+static void print_version (FILE *stream, struct argp_state *state);
 
-global_opt<string_option> opt_dump
-  ("Dump certain DIEs.  For classes, see option 'ignore'.",
-   "class[,...]", "dump");
+/* argp key values for long options.  */
+enum
+  {
+    OPT_IGNORE = 256,
+    OPT_DUMP,
+    OPT_TABULATE,
+    OPT_IGNORE_IMPLICIT_POINTER,
+  };
 
-global_opt<string_option> opt_tabulation_rule
-  ("Rule for sorting results into buckets. start is either integer 0..100, \
-or special value 0.0 indicating cases with no coverage whatsoever \
-(i.e. not those that happen to round to 0%).",
-   "start[:step][,...]", "tabulate");
+/* Definitions of arguments for argp functions.  */
+static const struct argp_option options[] =
+{
+  { "ignore", OPT_IGNORE, "CLASS", 0,
+    "Skip certain DIEs.  See below for available classes.", 0 },
 
-global_opt<void_option> opt_show_progess
-  ("Show progress.", "show-progress", 'p');
+  { "dump", OPT_DUMP, "CLASS", 0,
+    "Dump certain DIEs.  See below for available classes.", 0 },
 
-global_opt<void_option> opt_ignore_implicit_pointer
-  ("Turn off special handling of DW_OP_GNU_implicit_pointer.",
-   "ignore-implicit-pointer");
+  { "CLASS", 0, NULL, OPTION_DOC,
+    "May be one of single_addr, artificial, inlined, "
+    "inlined_subroutine, no_coverage, mutable, immutable, "
+    "implicit_pointer.", 0 },
+
+  { "tabulate", OPT_TABULATE, "START[:STEP][,...]", 0,
+    "Rule for sorting results into buckets.  START is either integer 0..100, "
+    "or special value 0.0 indicating cases with no coverage whatsoever "
+    "(i.e. not those that happen to round to 0%).", 0 },
+
+  { "show-progress", 'p', NULL, 0, "Show progress.", 0 },
+
+  { "ignore-implicit-pointer", OPT_IGNORE_IMPLICIT_POINTER, NULL, 0,
+    "Turn off special handling of DW_OP_GNU_implicit_pointer.", 0 },
+
+  { NULL, 0, NULL, 0, NULL, 0 },
+};
+
+std::string opt_tabulate = "10:10";
+std::string opt_ignore = "";
+std::string opt_dump = "";
+bool opt_ignore_implicit_pointer = false;
+bool opt_show_progress = false;
+
+/* Short description of program.  */
+static const char doc[] = "\
+Examine coverage of variable lifetime by location expressions.";
+
+/* Strings for arguments in help texts.  */
+static const char args_doc[] = "FILE...";
+
+/* Prototype for option handler.  */
+static error_t parse_opt (int key, char *arg, struct argp_state *state);
+
+/* Data structure to communicate with argp functions.  */
+static struct argp argp =
+{
+  options, parse_opt, args_doc, doc, NULL, NULL, NULL
+};
+
 
 #define DIE_TYPES		\
   TYPE(single_addr)		\
@@ -344,12 +390,12 @@ die_ranges (Dwarf_Die *die)
 // Look through parental dies and return the non-empty ranges instance
 // closest to IT hierarchically.
 ranges_t
-find_ranges (all_dies_iterator it)
+find_ranges (elfutils::all_dies_iterator it)
 {
-  for (; it != all_dies_iterator::end (); it = it.parent ())
+  for (; it != elfutils::all_dies_iterator::end (); it = it.parent ())
     {
-      auto ranges = die_ranges (*it);
-      if (!ranges.empty ())
+      ranges_t ranges = die_ranges (*it);
+      if (! ranges.empty ())
 	return ranges;
     }
 
@@ -444,7 +490,8 @@ process_location (Dwarf_Attribute *locattr,
       Dwarf_Op *exprs[nlocs];
       size_t exprlens[nlocs];
 
-      for (auto rit = ranges.begin (); rit != ranges.end (); ++rit)
+      for (ranges_t::const_iterator rit = ranges.begin ();
+	   rit != ranges.end (); ++rit)
 	{
 	  Dwarf_Addr low = rit->first;
 	  Dwarf_Addr high = rit->second;
@@ -493,7 +540,8 @@ process_location (Dwarf_Attribute *locattr,
 		  if (exprlens[i] == 1
 		      && exprs[i]->atom == DW_OP_GNU_implicit_pointer)
 		    {
-		      ranges_t this_range = {{addr, addr + 1}};
+		      ranges_t this_range;
+		      this_range.push_back (std::make_pair (addr, addr + 1));
 		      int this_coverage;
 		      if (die_action a = (process_implicit_pointer
 					  (locattr, exprs[i], this_range,
@@ -531,7 +579,7 @@ die_flag_value (Dwarf_Die *die, unsigned attr_name)
   bool val;
 
   // XXX do we need dwarf_attr_integrate here?
-  if (dwarf_attr (die, attr_name, &attr) != nullptr)
+  if (dwarf_attr (die, attr_name, &attr) != NULL)
     {
       if (dwarf_formflag (&attr, &val) != 0)
 	throw error (std::string ("dwarf_formflag(")
@@ -576,31 +624,31 @@ process (Dwarf *dw)
   for (int i = 0; i <= 100; ++i)
     tally[i] = 0;
 
-  tabrules_t tabrules (opt_tabulation_rule.seen ()
-		       ? opt_tabulation_rule.value () : "10:10");
-  die_type_matcher ignore (opt_ignore.seen () ? opt_ignore.value () : "");
-  die_type_matcher dump (opt_dump.seen () ? opt_dump.value () : "");
+  tabrules_t tabrules (opt_tabulate);
+  die_type_matcher ignore (opt_ignore);
+  die_type_matcher dump (opt_dump);
   std::bitset<dt__count> interested = ignore | dump;
   bool interested_mutability
     = interested.test (dt_mutable) || interested.test (dt_immutable);
   bool interested_implicit = interested.test (dt_implicit_pointer);
-  bool full_implicit = !opt_ignore_implicit_pointer.seen ();
-  bool show_progress = opt_show_progess.seen ();
+  bool full_implicit = ! opt_ignore_implicit_pointer;
 
-  cu_iterator prev_cit = cu_iterator::end ();
-  cu_iterator last_cit = cu_iterator::end ();
-  if (show_progress)
-    for (cu_iterator it = cu_iterator (dw); it != cu_iterator::end (); ++it)
+  elfutils::cu_iterator prev_cit = elfutils::cu_iterator::end ();
+  elfutils::cu_iterator last_cit = elfutils::cu_iterator::end ();
+  if (opt_show_progress)
+    for (elfutils::cu_iterator it = elfutils::cu_iterator (dw);
+	 it != elfutils::cu_iterator::end (); ++it)
       last_cit = it;
 
-  for (all_dies_iterator it (dw); it != all_dies_iterator::end (); ++it)
+  for (elfutils::all_dies_iterator it (dw);
+       it != elfutils::all_dies_iterator::end (); ++it)
     {
       std::bitset<dt__count> die_type;
       Dwarf_Die *die = *it;
 
-      if (show_progress)
+      if (opt_show_progress)
 	{
-	  cu_iterator cit = it.cu ();
+	  elfutils::cu_iterator cit = it.cu ();
 	  if (cit != prev_cit)
 	    {
 	      prev_cit = cit;
@@ -638,8 +686,11 @@ process (Dwarf *dw)
 	{
 	  bool inlined = false;
 	  bool inlined_subroutine = false;
-	  for (auto &die2: it.stack ())
+	  std::vector <Dwarf_Die> const &stack = it.stack ();
+	  for (std::vector <Dwarf_Die>::const_iterator jt = stack.begin ();
+	       jt != stack.end (); ++jt)
 	    {
+	      Dwarf_Die die2 = *jt;
 	      if (interested.test (dt_inlined)
 		  && dwarf_tag (&die2) == DW_TAG_subprogram
 		  && is_inlined (&die2))
@@ -748,8 +799,11 @@ process (Dwarf *dw)
 #undef TYPE
 
 	  std::string pad = " ";
-	  for (auto &die2: it.stack ())
+	  std::vector <Dwarf_Die> const &stack = it.stack ();
+	  for (std::vector <Dwarf_Die>::const_iterator jt = stack.begin ();
+	       jt != stack.end (); ++jt)
 	    {
+	      Dwarf_Die die2 = *jt;
 	      std::cerr << pad << pri::ref (&die2) << " "
 			<< dwarf_tag_string (dwarf_tag (&die2)) << std::endl;
 	      pad += " ";
@@ -761,7 +815,7 @@ process (Dwarf *dw)
       //std::cerr << std::endl;
     }
 
-  if (show_progress)
+  if (opt_show_progress)
     std::cout << std::endl;
 
   unsigned long cumulative = 0;
@@ -815,14 +869,15 @@ main(int argc, char *argv[])
   textdomain ("dwlocstats");
 
   /* Parse and process arguments.  */
-  argppp argp (global_opts ());
   int remaining;
-  argp.parse (argc, argv, 0, &remaining);
+  argp_program_version_hook = print_version;
+  argp_program_bug_address = "pmachata@gmail.com";
+  argp_parse (&argp, argc, argv, 0, &remaining, NULL);
 
   if (remaining == argc)
     {
       fputs (gettext ("Missing file name.\n"), stderr);
-      argp.help (stderr, ARGP_HELP_SEE | ARGP_HELP_EXIT_ERR,
+      argp_help (&argp, stderr, ARGP_HELP_SEE | ARGP_HELP_EXIT_ERR,
 		 program_invocation_short_name);
       std::exit (1);
     }
@@ -839,4 +894,39 @@ main(int argc, char *argv[])
       process (dw);
     }
   while (++remaining < argc);
+}
+
+void
+print_version (FILE *stream, struct argp_state *state)
+{
+  std::fprintf (stream, "dwlocstat 0.1\n");
+}
+
+error_t
+parse_opt (int key, char *arg, struct argp_state *state)
+{
+  switch (key)
+    {
+    case 'p':
+      opt_show_progress = true;
+      return 0;
+
+    case OPT_IGNORE:
+      opt_ignore = arg;
+      return 0;
+
+    case OPT_DUMP:
+      opt_dump = arg;
+      return 0;
+
+    case OPT_TABULATE:
+      opt_tabulate = arg;
+      return 0;
+
+    case OPT_IGNORE_IMPLICIT_POINTER:
+      opt_ignore_implicit_pointer = true;
+      return 0;
+    }
+
+  return ARGP_ERR_UNKNOWN;
 }
